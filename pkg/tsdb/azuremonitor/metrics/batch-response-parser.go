@@ -46,8 +46,9 @@ func (e *AzureMonitorDatasource) parseBatchResponse(
 			batchValue, exists := resourceMap[resourceIdLower]
 
 			if !exists {
-				// Resource not in response - this could be an error
-				e.Logger.Warn("Resource not found in batch response", "resourceId", resourceId)
+				// Resource not in this batch - expected when a query spans multiple
+				// subscriptions and its resources are split across separate batch requests.
+				e.Logger.Debug("Resource not found in batch response", "resourceId", resourceId)
 				continue
 			}
 

@@ -155,9 +155,15 @@ func (e *AzureMonitorDatasource) ExecuteTimeSeriesQueryWithBatch(ctx context.Con
 			continue
 		}
 
-		// Add batch results to response
+		// Add batch results to response, merging frames for queries that span
+		// multiple subscription batches.
 		for refID, dataResponse := range batchResults {
-			result.Responses[refID] = dataResponse
+			if existing, exists := result.Responses[refID]; exists {
+				existing.Frames = append(existing.Frames, dataResponse.Frames...)
+				result.Responses[refID] = existing
+			} else {
+				result.Responses[refID] = dataResponse
+			}
 		}
 	}
 

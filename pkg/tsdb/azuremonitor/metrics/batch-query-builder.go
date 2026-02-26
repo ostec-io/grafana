@@ -10,47 +10,84 @@ import (
 
 const maxBatchSize = 50
 
-// groupQueriesIntoBatches groups queries that can be batched together
-// Queries are grouped by: region, subscription, namespace, metric names, time range, interval, aggregation, filter
+// groupQueriesIntoBatches groups queries that can be batched together.
+// Resources are grouped by: region, subscription (from resource ID), namespace, metric names,
+// time range, interval, aggregation, and filter. Resources from different subscriptions are
+// placed in separate batches even if they come from the same query.
 func groupQueriesIntoBatches(queries []*types.AzureMonitorQuery) []*types.BatchQueryGroup {
 	// Group queries by their batch key
 	groupMap := make(map[string]*types.BatchQueryGroup)
 
 	for _, query := range queries {
-		// Generate a unique key for this batch group
-		batchKey := generateBatchKey(query)
-
-		group, exists := groupMap[batchKey]
-		if !exists {
-			// Create a new batch group
-			group = &types.BatchQueryGroup{
-				Region:       extractRegion(query),
-				Subscription: query.Subscription,
-				Namespace:    query.Params.Get("metricnamespace"),
-				MetricNames:  []string{query.Params.Get("metricnames")},
-				TimeRange:    query.TimeRange,
-				Interval:     query.Params.Get("interval"),
-				Aggregation:  query.Params.Get("aggregation"),
-				Filter:       extractDimensionFilter(query),
-				Top:          query.Params.Get("top"),
-				OrderBy:      query.Params.Get("orderby"),
-				ResourceIds:  []string{},
-				Queries:      []*types.AzureMonitorQuery{},
-			}
-			groupMap[batchKey] = group
-		}
-
-		// Add resource IDs from this query
 		resourceIds := extractResourceIdsFromQuery(query)
+
 		for _, resourceId := range resourceIds {
-			// Avoid duplicates
+			// Use the subscription from the resource ID itself so that resources
+			// from different subscriptions are placed in separate batches.
+			sub := extractSubscriptionFromResourceID(resourceId)
+			if sub == "" {
+				sub = query.Subscription
+			}
+
+			batchKey := generateBatchKey(query, sub)
+
+			group, exists := groupMap[batchKey]
+			if !exists {
+				group = &types.BatchQueryGroup{
+					Region:       extractRegion(query),
+					Subscription: sub,
+					Namespace:    query.Params.Get("metricnamespace"),
+					MetricNames:  []string{query.Params.Get("metricnames")},
+					TimeRange:    query.TimeRange,
+					Interval:     query.Params.Get("interval"),
+					Aggregation:  query.Params.Get("aggregation"),
+					Filter:       extractDimensionFilter(query),
+					Top:          query.Params.Get("top"),
+					OrderBy:      query.Params.Get("orderby"),
+					ResourceIds:  []string{},
+					Queries:      []*types.AzureMonitorQuery{},
+				}
+				groupMap[batchKey] = group
+			}
+
 			if !contains(group.ResourceIds, resourceId) {
 				group.ResourceIds = append(group.ResourceIds, resourceId)
 			}
+
+			// Add the query to the group only once (a query may have resources in
+			// multiple subscription batches).
+			queryAlreadyAdded := false
+			for _, q := range group.Queries {
+				if q.RefID == query.RefID {
+					queryAlreadyAdded = true
+					break
+				}
+			}
+			if !queryAlreadyAdded {
+				group.Queries = append(group.Queries, query)
+			}
 		}
 
-		// Add the query to the group
-		group.Queries = append(group.Queries, query)
+		// Queries with no resources still need a batch entry so they are not lost.
+		if len(resourceIds) == 0 {
+			batchKey := generateBatchKey(query, query.Subscription)
+			if _, exists := groupMap[batchKey]; !exists {
+				groupMap[batchKey] = &types.BatchQueryGroup{
+					Region:       extractRegion(query),
+					Subscription: query.Subscription,
+					Namespace:    query.Params.Get("metricnamespace"),
+					MetricNames:  []string{query.Params.Get("metricnames")},
+					TimeRange:    query.TimeRange,
+					Interval:     query.Params.Get("interval"),
+					Aggregation:  query.Params.Get("aggregation"),
+					Filter:       extractDimensionFilter(query),
+					Top:          query.Params.Get("top"),
+					OrderBy:      query.Params.Get("orderby"),
+					ResourceIds:  []string{},
+					Queries:      []*types.AzureMonitorQuery{query},
+				}
+			}
+		}
 	}
 
 	// Split groups that exceed the batch size limit
@@ -68,12 +105,13 @@ func groupQueriesIntoBatches(queries []*types.AzureMonitorQuery) []*types.BatchQ
 	return batches
 }
 
-// generateBatchKey creates a unique key for grouping queries
-func generateBatchKey(query *types.AzureMonitorQuery) string {
-	// Combine all the parameters that must match for batching
+// generateBatchKey creates a unique key for grouping queries.
+// subscription is passed explicitly (rather than read from query.Subscription) so that
+// resources belonging to different subscriptions within the same query produce distinct keys.
+func generateBatchKey(query *types.AzureMonitorQuery, subscription string) string {
 	parts := []string{
 		extractRegion(query),
-		query.Subscription,
+		subscription,
 		query.Params.Get("metricnamespace"),
 		query.Params.Get("metricnames"),
 		query.TimeRange.From.String(),
@@ -86,10 +124,24 @@ func generateBatchKey(query *types.AzureMonitorQuery) string {
 	}
 
 	combined := strings.Join(parts, "|")
-
-	// Hash the combined string to create a consistent key
 	hash := sha256.Sum256([]byte(combined))
 	return hex.EncodeToString(hash[:])
+}
+
+// extractSubscriptionFromResourceID parses the subscription ID from an Azure resource ID.
+// Resource IDs have the form /subscriptions/{subId}/resourceGroups/...
+func extractSubscriptionFromResourceID(resourceID string) string {
+	const prefix = "/subscriptions/"
+	lower := strings.ToLower(resourceID)
+	idx := strings.Index(lower, prefix)
+	if idx < 0 {
+		return ""
+	}
+	rest := resourceID[idx+len(prefix):]
+	if slashIdx := strings.Index(rest, "/"); slashIdx >= 0 {
+		return rest[:slashIdx]
+	}
+	return rest
 }
 
 // extractRegion extracts the region from a query
