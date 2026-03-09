@@ -21,17 +21,17 @@ export function AdHocFiltersVariableEditor(props: AdHocFiltersVariableEditorProp
   const { datasource: datasourceRef, defaultKeys, allowCustomValue } = variable.useState();
 
   const [wip, setWip] = useState<AdHocFilterWithLabels | undefined>(undefined);
-  const [originalValues, setOriginalValues] = useState(() => variable.getOriginalValues());
+  const [originalFilters, setOriginalFilters] = useState(() => variable.getOriginalFilters());
 
-  const { dashboardOriginalValues, nonDashboardOriginalValues } = useMemo(() => {
-    const dashboardOriginalValues: AdHocFilterWithLabels[] = [];
-    const nonDashboardOriginalValues: AdHocFilterWithLabels[] = [];
+  const { dashboardOriginalFilters, nonDashboardOriginalFilters } = useMemo(() => {
+    const dashboardOriginalFilters: AdHocFilterWithLabels[] = [];
+    const nonDashboardOriginalFilters: AdHocFilterWithLabels[] = [];
 
-    for (const f of originalValues) {
-      (f.origin === 'dashboard' ? dashboardOriginalValues : nonDashboardOriginalValues).push(f);
+    for (const f of originalFilters) {
+      (f.origin === 'dashboard' ? dashboardOriginalFilters : nonDashboardOriginalFilters).push(f);
     }
-    return { dashboardOriginalValues, nonDashboardOriginalValues };
-  }, [originalValues]);
+    return { dashboardOriginalFilters, nonDashboardOriginalFilters };
+  }, [originalFilters]);
 
   const originFiltersController = useMemo(() => {
     if (!config.featureToggles.adHocFilterDefaultValues) {
@@ -39,12 +39,12 @@ export function AdHocFiltersVariableEditor(props: AdHocFiltersVariableEditorProp
     }
 
     return new AdHocOriginFiltersController(
-      dashboardOriginalValues,
+      dashboardOriginalFilters,
       (filters) => {
-        const allFilters = [...nonDashboardOriginalValues, ...filters];
-        variable.setOriginalValues(allFilters);
+        const allFilters = [...nonDashboardOriginalFilters, ...filters];
+        variable.setOriginalFilters(allFilters);
         variable.setState({ originFilters: allFilters });
-        setOriginalValues(allFilters);
+        setOriginalFilters(allFilters);
       },
       wip,
       setWip,
@@ -53,7 +53,7 @@ export function AdHocFiltersVariableEditor(props: AdHocFiltersVariableEditorProp
       (filter) => variable._getValuesFor(filter),
       () => variable._getOperators()
     );
-  }, [variable, dashboardOriginalValues, nonDashboardOriginalValues, wip, allowCustomValue]);
+  }, [variable, dashboardOriginalFilters, nonDashboardOriginalFilters, wip, allowCustomValue]);
 
   const { value: datasourceSettings } = useAsync(async () => {
     return await getDataSourceSrv().get(datasourceRef);
