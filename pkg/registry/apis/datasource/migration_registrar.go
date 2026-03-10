@@ -10,16 +10,20 @@ import (
 // A single "primary" GroupResource is used for config/registration, while the actual
 // MigratorFunc streams each datasource with its per-plugin GroupResource key.
 func DataSourceMigration(dsMigrator migrator.DataSourceMigrator) migrations.MigrationDefinition {
-	dsGR := schema.GroupResource{Group: "datasource.grafana.app", Resource: "datasources"}
+	// TODO: read these from somewhere dynamic, like we do when registering API endpoints.
+	pGR := schema.GroupResource{Group: "datasource.grafana.app", Resource: "prometheus"}
+	tGR := schema.GroupResource{Group: "datasource.grafana.app", Resource: "grafana-testdata-datasource"}
 
 	return migrations.MigrationDefinition{
-		ID:          "datasources",
+		ID:          "datasource",
 		MigrationID: "datasources migration",
 		Resources: []migrations.ResourceInfo{
-			{GroupResource: dsGR, LockTables: []string{"data_source"}},
+			{GroupResource: pGR, LockTables: []string{"data_source"}},
+			{GroupResource: tGR, LockTables: []string{"data_source"}},
 		},
 		Migrators: map[schema.GroupResource]migrations.MigratorFunc{
-			dsGR: dsMigrator.MigrateDataSources,
+			pGR: dsMigrator.MigrateDataSources,
+			tGR: dsMigrator.MigrateDataSources,
 		},
 		Validators: []migrations.ValidatorFactory{
 			migrator.DataSourceCountValidation(),

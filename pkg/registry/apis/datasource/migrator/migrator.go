@@ -2,16 +2,12 @@ package migrator
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"embed"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"iter"
-	"maps"
 	"strconv"
 	"text/template"
 	"time"
@@ -26,7 +22,6 @@ import (
 	gapiutil "github.com/grafana/grafana/pkg/services/apiserver/utils"
 	"github.com/grafana/grafana/pkg/services/datasources"
 	"github.com/grafana/grafana/pkg/storage/legacysql"
-	"github.com/grafana/grafana/pkg/storage/unified/apistore"
 	"github.com/grafana/grafana/pkg/storage/unified/migrations"
 	"github.com/grafana/grafana/pkg/storage/unified/resourcepb"
 	"github.com/grafana/grafana/pkg/storage/unified/sql/sqltemplate"
@@ -45,12 +40,13 @@ type DataSourceMigrator interface {
 }
 
 type dataSourceMigrator struct {
-	sql legacysql.LegacyDatabaseProvider
+	sql       legacysql.LegacyDatabaseProvider
+	dsService datasources.DataSourceService
 }
 
 // ProvideDataSourceMigrator creates a dataSourceMigrator for use in wire DI.
-func ProvideDataSourceMigrator(sql legacysql.LegacyDatabaseProvider) DataSourceMigrator {
-	return &dataSourceMigrator{sql: sql}
+func ProvideDataSourceMigrator(sql legacysql.LegacyDatabaseProvider, dsService datasources.DataSourceService) DataSourceMigrator {
+	return &dataSourceMigrator{sql: sql, dsService: dsService}
 }
 
 // MigrateDataSources reads datasources from legacy SQL storage and streams them as
@@ -68,6 +64,7 @@ func (m *dataSourceMigrator) MigrateDataSources(ctx context.Context, orgId int64
 		return err
 	}
 
+	group := "datasource.grafana.app"
 	mapper := request.GetNamespaceMapper(nil)
 
 	count := 0
@@ -77,16 +74,14 @@ func (m *dataSourceMigrator) MigrateDataSources(ctx context.Context, orgId int64
 			return fmt.Errorf("scanning datasource row: %w", err)
 		}
 
-		group := ds.Type + ".datasource.grafana.app"
-
-		obj, err := asDataSource(ds, mapper, group)
+		obj, err := m.asDataSource(ctx, ds, mapper, group)
 		if err != nil {
 			return fmt.Errorf("converting datasource %s (type=%s): %w", ds.UID, ds.Type, err)
 		}
 
 		// Set TypeMeta with the per-plugin group
 		obj.TypeMeta = metav1.TypeMeta{
-			APIVersion: group + "/" + datasourceV0.VERSION,
+			APIVersion: ds.Type + "." + group + "/" + datasourceV0.VERSION,
 			Kind:       "DataSource",
 		}
 
@@ -99,14 +94,14 @@ func (m *dataSourceMigrator) MigrateDataSources(ctx context.Context, orgId int64
 			Key: &resourcepb.ResourceKey{
 				Namespace: opts.Namespace,
 				Group:     group,
-				Resource:  "datasources",
+				Resource:  ds.Type,
 				Name:      ds.UID,
 			},
 			Value:  body,
 			Action: resourcepb.BulkRequest_ADDED,
 		}
 
-		opts.Progress(count, fmt.Sprintf("%s/%s (%d)", ds.Type, ds.Name, len(req.Value)))
+		opts.Progress(count, fmt.Sprintf("%s/%s (%d) %s", ds.Type, ds.Name, len(req.Value), req.Key))
 		count++
 
 		err = stream.Send(req)
@@ -129,8 +124,12 @@ func (m *dataSourceMigrator) MigrateDataSources(ctx context.Context, orgId int64
 // asDataSource converts a legacy DataSource model to a K8s DataSource object.
 // This mirrors the logic in datasource.Converter.AsDataSource but is inlined here
 // to avoid an import cycle between the datasource and migrator packages.
-func asDataSource(ds *datasources.DataSource, mapper request.NamespaceMapper, group string) (*datasourceV0.DataSource, error) {
-	secureKeys := toInlineSecureValues(ds.UID, maps.Keys(ds.SecureJsonData))
+func (m *dataSourceMigrator) asDataSource(ctx context.Context, ds *datasources.DataSource, mapper request.NamespaceMapper, group string) (*datasourceV0.DataSource, error) {
+	secure, err := m.toInlineSecureValues(ctx, ds)
+	if err != nil {
+		return nil, err
+	}
+
 	obj := &datasourceV0.DataSource{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       ds.UID,
@@ -138,7 +137,7 @@ func asDataSource(ds *datasources.DataSource, mapper request.NamespaceMapper, gr
 			Generation: int64(ds.Version),
 		},
 		Spec:   datasourceV0.UnstructuredSpec{},
-		Secure: secureKeys,
+		Secure: secure,
 	}
 	obj.UID = gapiutil.CalculateClusterWideUID(obj)
 	obj.Spec.SetTitle(ds.Name).
@@ -189,21 +188,24 @@ func asDataSource(ds *datasources.DataSource, mapper request.NamespaceMapper, gr
 }
 
 // toInlineSecureValues mirrors datasource.ToInlineSecureValues to avoid import cycle.
-func toInlineSecureValues(dsUID string, keys iter.Seq[string]) common.InlineSecureValues {
+func (m *dataSourceMigrator) toInlineSecureValues(ctx context.Context, ds *datasources.DataSource) (common.InlineSecureValues, error) {
 	values := make(common.InlineSecureValues)
-	for k := range keys {
-		h := sha256.New()
-		h.Write([]byte(dsUID))
-		h.Write([]byte("|"))
-		h.Write([]byte(k))
+
+	secrets, err := m.dsService.DecryptedValues(ctx, ds)
+	if err != nil {
+		return nil, fmt.Errorf("error decrypting secrets", ds.UID, ds.Type, err)
+	}
+
+	for k, v := range secrets {
 		values[k] = common.InlineSecureValue{
-			Name: apistore.LEGACY_DATASOURCE_SECURE_VALUE_NAME_PREFIX + hex.EncodeToString(h.Sum(nil)),
+			Create: common.NewSecretValue(v),
 		}
 	}
+
 	if len(values) == 0 {
-		return nil
+		return nil, nil
 	}
-	return values
+	return values, nil
 }
 
 func scanDataSource(rows *sql.Rows) (*datasources.DataSource, error) {
@@ -283,3 +285,5 @@ func (m *dataSourceMigrator) listDataSources(ctx context.Context, orgID int64) (
 
 	return helper.DB.GetSqlxSession().Query(ctx, rawQuery, req.GetArgs()...)
 }
+
+// Add a decrypt step for secure values, then add the secrets client, then get this merged.
