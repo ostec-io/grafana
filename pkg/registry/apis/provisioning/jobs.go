@@ -11,8 +11,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/rest"
 
+	"github.com/grafana/grafana/apps/provisioning/pkg/apis/auth"
 	provisioning "github.com/grafana/grafana/apps/provisioning/pkg/apis/provisioning/v0alpha1"
+	"github.com/grafana/grafana/apps/provisioning/pkg/repository"
 	"github.com/grafana/grafana/pkg/registry/apis/provisioning/jobs"
+	"github.com/grafana/grafana/pkg/registry/apis/provisioning/resources"
 )
 
 type JobQueueGetter interface {
@@ -24,6 +27,8 @@ type jobsConnector struct {
 	statusPatcherProvider StatusPatcherProvider
 	jobs                  JobQueueGetter
 	historic              jobs.HistoryReader
+	access                auth.AccessChecker
+	folderMetadataEnabled bool
 }
 
 func NewJobsConnector(
@@ -31,12 +36,16 @@ func NewJobsConnector(
 	statusPatcherProvider StatusPatcherProvider,
 	jobs JobQueueGetter,
 	historic jobs.HistoryReader,
+	access auth.AccessChecker,
+	folderMetadataEnabled bool,
 ) *jobsConnector {
 	return &jobsConnector{
 		repoGetter:            repoGetter,
 		statusPatcherProvider: statusPatcherProvider,
 		jobs:                  jobs,
 		historic:              historic,
+		access:                access,
+		folderMetadataEnabled: folderMetadataEnabled,
 	}
 }
 
@@ -132,6 +141,49 @@ func (c *jobsConnector) Connect(
 		}
 		spec.Repository = name
 
+		// Validate write operations before queueing the job
+		requiresWrite := spec.Action == provisioning.JobActionDelete ||
+			spec.Action == provisioning.JobActionMove ||
+			spec.Action == provisioning.JobActionPush ||
+			spec.Action == provisioning.JobActionMigrate
+
+		if requiresWrite {
+			var targetRef string
+			switch spec.Action {
+			case provisioning.JobActionDelete:
+				if spec.Delete != nil {
+					targetRef = spec.Delete.Ref
+				}
+			case provisioning.JobActionMove:
+				if spec.Move != nil {
+					targetRef = spec.Move.Ref
+				}
+			case provisioning.JobActionPush:
+				if spec.Push != nil {
+					targetRef = spec.Push.Branch
+				}
+			case provisioning.JobActionMigrate:
+				// Migrate operates on the default branch (no ref)
+				targetRef = ""
+			default:
+				// Read-only operations (Pull, PullRequest, FixFolderMetadata) don't reach here
+				// due to requiresWrite check, but include default for exhaustive linter
+				targetRef = ""
+			}
+
+			if err := repository.IsWriteAllowed(cfg, targetRef); err != nil {
+				responder.Error(err)
+				return
+			}
+		}
+
+		if spec.Action == provisioning.JobActionPush {
+			if err := c.authorizeExportJob(r.Context(), repo, cfg, spec); err != nil {
+				responder.Error(err)
+				return
+			}
+		}
+
 		job, err := c.jobs.GetJobQueue().Insert(ctx, cfg.Namespace, spec)
 		if err != nil {
 			responder.Error(err)
@@ -171,6 +223,31 @@ var (
 	_ rest.Storage         = (*jobsConnector)(nil)
 	_ rest.StorageMetadata = (*jobsConnector)(nil)
 )
+
+// authorizeExportJob checks that the requesting user has the required permissions
+// for an export operation. This runs at job creation time while the user's identity
+// is still in the request context, since the export job executes later as the
+// provisioning service identity with full access.
+//
+// Delegates to the resources.Authorizer which checks:
+//  1. Read permission on all supported resource types at root level.
+//  2. Create permission on all supported resource types in the target folder (if folder-scoped).
+func (c *jobsConnector) authorizeExportJob(ctx context.Context, repo repository.Repository, cfg *provisioning.Repository, spec provisioning.JobSpec) error {
+	if spec.Push == nil {
+		return nil
+	}
+
+	reader, ok := repo.(repository.Reader)
+	if !ok {
+		return apierrors.NewBadRequest("repository does not support reading")
+	}
+
+	authorizer := resources.NewAuthorizer(cfg, reader, c.access, c.folderMetadataEnabled)
+	if err := authorizer.AuthorizeReadAllSupported(ctx); err != nil {
+		return err
+	}
+	return authorizer.AuthorizeCreateAllSupported(ctx)
+}
 
 // ValidUUID ensures the ID is valid for a blob.
 // The ID is always a UUID. As such, this checks for something that can resemble a UUID.
