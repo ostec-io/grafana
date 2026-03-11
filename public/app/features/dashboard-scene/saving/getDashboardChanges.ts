@@ -262,8 +262,8 @@ export function applyVariableChanges(saveModel: Dashboard, originalSaveModel: Da
 
       if (
         !adHocVariableFiltersEqual(
-          config.featureToggles.adHocFilterDefaultValues ? variableFilters?.filter((f) => !f.origin) : variableFilters,
-          config.featureToggles.adHocFilterDefaultValues ? originalFilters?.filter((f) => !f.origin) : originalFilters
+          variableFilters?.filter((f) => !f.origin),
+          originalFilters?.filter((f) => !f.origin)
         )
       ) {
         hasVariableValueChanges = true;
@@ -275,15 +275,8 @@ export function applyVariableChanges(saveModel: Dashboard, originalSaveModel: Da
       const typed = variable as TypedVariableModel;
 
       if (typed.type === 'adhoc') {
-        if (config.featureToggles.adHocFilterDefaultValues) {
-          const originFilters = (typed.filters ?? []).filter((f) => f.origin);
-          // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-          const originalRuntimeFilters = ((original as AdHocVariableModel).filters ?? []).filter((f) => !f.origin);
-          typed.filters = [...originFilters, ...originalRuntimeFilters];
-        } else {
-          // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-          typed.filters = (original as AdHocVariableModel).filters;
-        }
+        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+        typed.filters = (original as AdHocVariableModel).filters;
       } else if (typed.type === 'textbox') {
         // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
         typed.query = (original as TextBoxVariableModel).query;
