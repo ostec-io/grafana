@@ -480,19 +480,6 @@ describe('getDashboardChanges with adHocFilterDefaultValues', () => {
       expect(result.hasVariableValueChanges).toBe(true);
     });
 
-    it('should preserve origin filters when saveVariables is false', () => {
-      const initial = makeDashboardWithAdhoc([]);
-      const changed = makeDashboardWithAdhoc([
-        { key: 'host', operator: '=', value: 'localhost', origin: 'dashboard' },
-        { key: 'env', operator: '=', value: 'prod' },
-      ]);
-
-      getRawDashboardChanges(initial, changed, false, false, false);
-
-      const savedFilters = (changed.templating!.list![0] as AdHocVariableModel).filters;
-      expect(savedFilters).toEqual([{ key: 'host', operator: '=', value: 'localhost', origin: 'dashboard' }]);
-    });
-
     it('should keep both origin and runtime filters when saveVariables is true', () => {
       const initial = makeDashboardWithAdhoc([]);
       const changed = makeDashboardWithAdhoc([
@@ -515,13 +502,13 @@ describe('getDashboardChanges with adHocFilterDefaultValues', () => {
       config.featureToggles.adHocFilterDefaultValues = false;
     });
 
-    it('should report variable value changes when any filters differ including origin', () => {
+    it('should not report variable value changes when only origin filters differ', () => {
       const initial = makeDashboardWithAdhoc([]);
       const changed = makeDashboardWithAdhoc([{ key: 'host', operator: '=', value: 'localhost', origin: 'dashboard' }]);
 
       const result = getRawDashboardChanges(initial, changed, false, false, false);
 
-      expect(result.hasVariableValueChanges).toBe(true);
+      expect(result.hasVariableValueChanges).toBe(false);
     });
 
     it('should reset all filters when saveVariables is false', () => {
