@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/grafana-app-sdk/operator"
 	"github.com/grafana/grafana-app-sdk/resource"
 	"github.com/grafana/grafana-app-sdk/simple"
-	foldersKind "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1beta1"
+	foldersKind "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1"
 	"github.com/grafana/grafana/apps/iam/pkg/reconcilers"
 	"github.com/grafana/grafana/pkg/services/authz"
 )

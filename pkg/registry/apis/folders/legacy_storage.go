@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/rest"
 
-	folders "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1beta1"
+	foldersv1 "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1"
 	"github.com/grafana/grafana/pkg/api/apierrors"
 	"github.com/grafana/grafana/pkg/apimachinery/identity"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
@@ -104,7 +104,7 @@ func (s *legacyStorage) List(ctx context.Context, options *internalversion.ListO
 		return nil, err
 	}
 
-	list := &folders.FolderList{}
+	list := &foldersv1.FolderList{}
 	for _, v := range hits {
 		r, err := convertToK8sResource(v, s.namespacer)
 		if err != nil {
@@ -166,7 +166,7 @@ func (s *legacyStorage) Create(ctx context.Context,
 		return nil, err
 	}
 
-	p, ok := obj.(*folders.Folder)
+	p, ok := obj.(*foldersv1.Folder)
 	if !ok {
 		return nil, fmt.Errorf("expected folder?")
 	}
@@ -234,11 +234,11 @@ func (s *legacyStorage) Update(ctx context.Context,
 	if err != nil {
 		return oldObj, created, err
 	}
-	f, ok := obj.(*folders.Folder)
+	f, ok := obj.(*foldersv1.Folder)
 	if !ok {
 		return nil, created, fmt.Errorf("expected folder after update")
 	}
-	old, ok := oldObj.(*folders.Folder)
+	old, ok := oldObj.(*foldersv1.Folder)
 	if !ok {
 		return nil, created, fmt.Errorf("expected old object to be a folder also")
 	}
@@ -300,7 +300,7 @@ func (s *legacyStorage) Delete(ctx context.Context, name string, deleteValidatio
 	if err != nil {
 		return nil, false, err
 	}
-	p, ok := v.(*folders.Folder)
+	p, ok := v.(*foldersv1.Folder)
 	if !ok {
 		return v, false, fmt.Errorf("expected a folder response from Get")
 	}

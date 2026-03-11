@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apiserver/pkg/registry/rest"
 
-	folders "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1beta1"
+	foldersv1 "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"github.com/grafana/grafana/pkg/services/accesscontrol"
 	"github.com/grafana/grafana/pkg/services/dashboards"
@@ -19,7 +19,7 @@ import (
 	"github.com/grafana/grafana/pkg/util"
 )
 
-func validateOnCreate(ctx context.Context, f *folders.Folder, getter parentsGetter, maxDepth int) error {
+func validateOnCreate(ctx context.Context, f *foldersv1.Folder, getter parentsGetter, maxDepth int) error {
 	id := f.Name
 
 	if slices.Contains([]string{
@@ -71,8 +71,8 @@ func validateOnCreate(ctx context.Context, f *folders.Folder, getter parentsGett
 }
 
 func validateOnUpdate(ctx context.Context,
-	obj *folders.Folder,
-	old *folders.Folder,
+	obj *foldersv1.Folder,
+	old *foldersv1.Folder,
 	getter rest.Getter,
 	parents parentsGetter,
 	searcher resourcepb.ResourceIndexClient,
@@ -115,7 +115,7 @@ func validateOnUpdate(ctx context.Context,
 	if err != nil {
 		return fmt.Errorf("move target not found %w", err)
 	}
-	parent, ok := parentObj.(*folders.Folder)
+	parent, ok := parentObj.(*foldersv1.Folder)
 	if !ok {
 		return fmt.Errorf("expected folder, found %T", parentObj)
 	}
@@ -169,7 +169,7 @@ func canSkipChildrenCheck(ctx context.Context, oldFolder utils.GrafanaMetaAccess
 		return false
 	}
 
-	oldParent, ok := oldParentObj.(*folders.Folder)
+	oldParent, ok := oldParentObj.(*foldersv1.Folder)
 	if !ok {
 		return false
 	}
@@ -253,8 +253,8 @@ func getChildrenBatch(ctx context.Context, searcher resourcepb.ResourceIndexClie
 		Options: &resourcepb.ListOptions{
 			Key: &resourcepb.ResourceKey{
 				Namespace: namespace,
-				Group:     folders.FolderResourceInfo.GroupVersionResource().Group,
-				Resource:  folders.FolderResourceInfo.GroupVersionResource().Resource,
+				Group:     foldersv1.FolderResourceInfo.GroupVersionResource().Group,
+				Resource:  foldersv1.FolderResourceInfo.GroupVersionResource().Resource,
 			},
 			Fields: []*resourcepb.Requirement{{
 				Key:      resource.SEARCH_FIELD_FOLDER,
@@ -289,7 +289,7 @@ func getChildrenBatch(ctx context.Context, searcher resourcepb.ResourceIndexClie
 }
 
 func validateOnDelete(ctx context.Context,
-	f *folders.Folder,
+	f *foldersv1.Folder,
 	searcher resourcepb.ResourceIndexClient,
 ) error {
 	resp, err := searcher.GetStats(ctx, &resourcepb.ResourceStatsRequest{Namespace: f.Namespace, Folder: f.Name})

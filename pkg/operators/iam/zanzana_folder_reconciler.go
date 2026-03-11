@@ -15,7 +15,7 @@ import (
 
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/grafana-app-sdk/operator"
-	folder "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1beta1"
+	folder "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1"
 	"github.com/grafana/grafana/apps/iam/pkg/app"
 	"github.com/grafana/grafana/pkg/clientauth"
 	"github.com/grafana/grafana/pkg/server"

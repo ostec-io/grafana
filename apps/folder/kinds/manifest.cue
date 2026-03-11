@@ -3,6 +3,8 @@ package folder
 manifest: {
 	appName:       "folder"
 	groupOverride: "folder.grafana.app"
+	preferredVersion: "v1"
+
 	versions: {
 		"v1": {
 			codegen: {

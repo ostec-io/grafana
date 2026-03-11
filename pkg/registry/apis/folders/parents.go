@@ -8,21 +8,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/registry/rest"
 
-	folders "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1beta1"
+	foldersv1 "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	folderLegacy "github.com/grafana/grafana/pkg/services/folder"
 )
 
-type parentsGetter = func(ctx context.Context, folder *folders.Folder) (*folders.FolderInfoList, error)
+type parentsGetter = func(ctx context.Context, folder *foldersv1.Folder) (*foldersv1.FolderInfoList, error)
 
 func newParentsGetter(getter rest.Getter, maxDepth int) parentsGetter {
-	return func(ctx context.Context, folder *folders.Folder) (*folders.FolderInfoList, error) {
-		info := &folders.FolderInfoList{
-			Items: []folders.FolderInfo{},
+	return func(ctx context.Context, folder *foldersv1.Folder) (*foldersv1.FolderInfoList, error) {
+		info := &foldersv1.FolderInfoList{
+			Items: []foldersv1.FolderInfo{},
 		}
 		id := folder.Name
 		if id == folderLegacy.GeneralFolderUID || id == folderLegacy.SharedWithMeFolderUID {
-			info.Items = []folders.FolderInfo{{
+			info.Items = []foldersv1.FolderInfo{{
 				Name:  folder.Name,
 				Title: folder.Spec.Title,
 			}}
@@ -35,7 +35,7 @@ func newParentsGetter(getter rest.Getter, maxDepth int) parentsGetter {
 
 		for folder != nil {
 			meta, _ := utils.MetaAccessor(folder)
-			item := folders.FolderInfo{
+			item := foldersv1.FolderInfo{
 				Name:   folder.Name,
 				Title:  folder.Spec.Title,
 				Parent: meta.GetFolder(),
@@ -54,7 +54,7 @@ func newParentsGetter(getter rest.Getter, maxDepth int) parentsGetter {
 
 			obj, e2 := getter.Get(ctx, item.Parent, &metav1.GetOptions{})
 			if e2 != nil {
-				info.Items = append(info.Items, folders.FolderInfo{
+				info.Items = append(info.Items, foldersv1.FolderInfo{
 					Name:        item.Parent,
 					Detached:    true,
 					Description: e2.Error(),
@@ -62,9 +62,9 @@ func newParentsGetter(getter rest.Getter, maxDepth int) parentsGetter {
 				break
 			}
 
-			parentFolder, ok := obj.(*folders.Folder)
+			parentFolder, ok := obj.(*foldersv1.Folder)
 			if !ok {
-				info.Items = append(info.Items, folders.FolderInfo{
+				info.Items = append(info.Items, foldersv1.FolderInfo{
 					Name:        item.Parent,
 					Detached:    true,
 					Description: fmt.Sprintf("expected folder, found: %T", obj),

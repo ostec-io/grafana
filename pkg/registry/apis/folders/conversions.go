@@ -8,7 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	claims "github.com/grafana/authlib/types"
-	folders "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1beta1"
+	foldersv1 "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"github.com/grafana/grafana/pkg/services/apiserver/endpoints/request"
 	gapiutil "github.com/grafana/grafana/pkg/services/apiserver/utils"
@@ -48,13 +48,13 @@ func LegacyCreateCommandToUnstructured(cmd *folder.CreateFolderCommand) (*unstru
 	return obj, nil
 }
 
-func LegacyFolderToUnstructured(v *folder.Folder, namespacer request.NamespaceMapper) (*folders.Folder, error) {
+func LegacyFolderToUnstructured(v *folder.Folder, namespacer request.NamespaceMapper) (*foldersv1.Folder, error) {
 	return convertToK8sResource(v, namespacer)
 }
 
-func convertToK8sResource(v *folder.Folder, namespacer request.NamespaceMapper) (*folders.Folder, error) {
-	f := &folders.Folder{
-		TypeMeta: folders.FolderResourceInfo.TypeMeta(),
+func convertToK8sResource(v *folder.Folder, namespacer request.NamespaceMapper) (*foldersv1.Folder, error) {
+	f := &foldersv1.Folder{
+		TypeMeta: foldersv1.FolderResourceInfo.TypeMeta(),
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              v.UID,
 			ResourceVersion:   fmt.Sprintf("%d", v.Updated.UnixMilli()),
@@ -62,7 +62,7 @@ func convertToK8sResource(v *folder.Folder, namespacer request.NamespaceMapper) 
 			Namespace:         namespacer(v.OrgID),
 			Generation:        int64(v.Version),
 		},
-		Spec: folders.FolderSpec{
+		Spec: foldersv1.FolderSpec{
 			Title:       v.Title,
 			Description: &v.Description,
 		},

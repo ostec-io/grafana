@@ -12,7 +12,7 @@ import (
 
 	claims "github.com/grafana/authlib/types"
 
-	folders "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1beta1"
+	foldersv1 "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1"
 	"github.com/grafana/grafana/pkg/api/apierrors"
 	"github.com/grafana/grafana/pkg/apimachinery/identity"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
@@ -107,7 +107,7 @@ func (s *folderStorage) Create(ctx context.Context,
 		return nil, err
 	}
 
-	p, ok := obj.(*folders.Folder)
+	p, ok := obj.(*foldersv1.Folder)
 	if !ok {
 		return nil, fmt.Errorf("expected folder?")
 	}

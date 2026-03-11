@@ -9,7 +9,7 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 
 	authlib "github.com/grafana/authlib/types"
-	foldersV1 "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1beta1"
+	foldersv1 "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1"
 	"github.com/grafana/grafana/pkg/apimachinery/identity"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"github.com/grafana/grafana/pkg/services/apiserver/endpoints/request"
@@ -24,7 +24,7 @@ var _ = rest.Connecter(&subAccessREST{})
 var _ = rest.StorageMetadata(&subAccessREST{})
 
 func (r *subAccessREST) New() runtime.Object {
-	return &foldersV1.FolderAccessInfo{}
+	return &foldersv1.FolderAccessInfo{}
 }
 
 func (r *subAccessREST) Destroy() {
@@ -39,7 +39,7 @@ func (r *subAccessREST) ProducesMIMETypes(verb string) []string {
 }
 
 func (r *subAccessREST) ProducesObject(verb string) interface{} {
-	return &foldersV1.FolderAccessInfo{}
+	return &foldersv1.FolderAccessInfo{}
 }
 
 func (r *subAccessREST) NewConnectOptions() (runtime.Object, bool, string) {
@@ -57,7 +57,7 @@ func (r *subAccessREST) Connect(ctx context.Context, name string, opts runtime.O
 	}), nil
 }
 
-func (r *subAccessREST) getAccessInfo(ctx context.Context, name string) (*foldersV1.FolderAccessInfo, error) {
+func (r *subAccessREST) getAccessInfo(ctx context.Context, name string) (*foldersv1.FolderAccessInfo, error) {
 	ns, err := request.NamespaceInfoFrom(ctx, true)
 	if err != nil {
 		return nil, err
@@ -83,15 +83,15 @@ func (r *subAccessREST) getAccessInfo(ctx context.Context, name string) (*folder
 		}
 		tmp, err = r.accessClient.Check(ctx, user, authlib.CheckRequest{
 			Verb:      verb,
-			Group:     foldersV1.GROUP,
-			Resource:  foldersV1.RESOURCE,
+			Group:     foldersv1.GROUP,
+			Resource:  foldersv1.RESOURCE,
 			Namespace: ns.Value,
 			Name:      name,
 		}, obj.GetFolder())
 		return tmp.Allowed
 	}
 
-	rsp := &foldersV1.FolderAccessInfo{}
+	rsp := &foldersv1.FolderAccessInfo{}
 	rsp.CanAdmin = check(utils.VerbSetPermissions)
 	if err != nil {
 		return nil, err

@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/rest"
 
-	folders "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1beta1"
+	foldersv1 "github.com/grafana/grafana/apps/folder/pkg/apis/folder/v1"
 	"github.com/grafana/grafana/pkg/services/folder"
 )
 
@@ -22,7 +22,7 @@ var _ = rest.Connecter(&subParentsREST{})
 var _ = rest.StorageMetadata(&subParentsREST{})
 
 func (r *subParentsREST) New() runtime.Object {
-	return &folders.FolderInfoList{}
+	return &foldersv1.FolderInfoList{}
 }
 
 func (r *subParentsREST) Destroy() {
@@ -37,7 +37,7 @@ func (r *subParentsREST) ProducesMIMETypes(verb string) []string {
 }
 
 func (r *subParentsREST) ProducesObject(verb string) interface{} {
-	return &folders.FolderInfoList{}
+	return &foldersv1.FolderInfoList{}
 }
 
 func (r *subParentsREST) NewConnectOptions() (runtime.Object, bool, string) {
@@ -47,8 +47,8 @@ func (r *subParentsREST) NewConnectOptions() (runtime.Object, bool, string) {
 func (r *subParentsREST) Connect(ctx context.Context, name string, opts runtime.Object, responder rest.Responder) (http.Handler, error) {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if name == folder.GeneralFolderUID || name == folder.SharedWithMeFolderUID {
-			responder.Object(http.StatusOK, &folders.FolderInfoList{
-				Items: []folders.FolderInfo{},
+			responder.Object(http.StatusOK, &foldersv1.FolderInfoList{
+				Items: []foldersv1.FolderInfo{},
 			})
 			return
 		}
@@ -59,7 +59,7 @@ func (r *subParentsREST) Connect(ctx context.Context, name string, opts runtime.
 			return
 		}
 
-		folderObj, ok := obj.(*folders.Folder)
+		folderObj, ok := obj.(*foldersv1.Folder)
 		if !ok {
 			responder.Error(fmt.Errorf("expecting folder, found: %T", folderObj))
 			return
