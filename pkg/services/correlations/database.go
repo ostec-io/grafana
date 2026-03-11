@@ -69,28 +69,58 @@ func (s CorrelationsService) createCorrelation(ctx context.Context, cmd CreateCo
 	return correlation, nil
 }
 
+/*
+if this is ran from legacy, we will get a sourceUID directly. check the datasource exists first before checking the correlation for validity
+
+if it is ran from app platform (via dualWriteMode allowing edits to legacy), we will not get a sourceUID passed.
+check the correlation, then use the SourceUID from that to check the datasource for validity
+
+ideally we want the datasource to be checked first as much as possible
+*/
 func (s CorrelationsService) deleteCorrelation(ctx context.Context, cmd DeleteCorrelationCommand) error {
 	return s.SQLStore.WithDbSession(ctx, func(session *db.Session) error {
+		var foundSourceUID string
+		var foundCorrelation Correlation
+
+		if cmd.SourceUID == "" {
+			correlation, err := s.GetCorrelation(ctx, GetCorrelationQuery(cmd))
+			if err != nil {
+				return err
+			}
+
+			if correlation.Provisioned {
+				return ErrCorrelationReadOnly
+			}
+			foundSourceUID = correlation.SourceUID
+			foundCorrelation = correlation
+		} else {
+			foundSourceUID = cmd.SourceUID
+		}
+
 		query := &datasources.GetDataSourceQuery{
 			OrgID: cmd.OrgId,
-			UID:   cmd.SourceUID,
+			UID:   foundSourceUID,
 		}
 		_, err := s.DataSourceService.GetDataSource(ctx, query)
 		if err != nil {
 			return ErrSourceDataSourceDoesNotExists
 		}
 
-		correlation, err := s.GetCorrelation(ctx, GetCorrelationQuery(cmd))
+		if foundCorrelation.UID == "" {
+			correlation, err := s.GetCorrelation(ctx, GetCorrelationQuery(cmd))
 
-		if err != nil {
-			return err
+			if err != nil {
+				return err
+			}
+
+			if correlation.Provisioned {
+				return ErrCorrelationReadOnly
+			}
+
+			foundSourceUID = cmd.SourceUID
 		}
 
-		if correlation.Provisioned {
-			return ErrCorrelationReadOnly
-		}
-
-		deletedCount, err := session.Delete(&Correlation{UID: cmd.UID, SourceUID: cmd.SourceUID})
+		deletedCount, err := session.Delete(&Correlation{UID: cmd.UID, SourceUID: foundSourceUID})
 
 		if err != nil {
 			return err
